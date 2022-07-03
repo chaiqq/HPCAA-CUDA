@@ -1,6 +1,7 @@
 # Optimization Process
 Based on https://developer.download.nvidia.com/assets/cuda/files/reduction.pdf 
-Kernels were tested on NVIDIA Quadro K3100M, Compute Capability = 3.0
+Kernels were tested on NVIDIA Quadro K3100M, Compute Capability = 3.0.
+The reduction operation is memory bound. The arithmetic intensity = n FLOP / (n*4 Byte) = 0.25. So in the performance, we focus on the bandwidth it can achieve.
 ## Overview
 The reduce kernel performs reduction  by 2 phases. 
 1st phase: inside each block; each block then produces a partial sum;
@@ -21,7 +22,7 @@ eg:
 ### performance
 | Kernel   | Time(2^20 floats) | Bandwidth(GB/s) |
 |----------|-------------------|-----------------|
-| reduce_0 | 8.041ms           | 0.522           |
+| reduce_0 | 1.476ms           | 2.842           |
 
 
 ### problem
@@ -42,8 +43,8 @@ eg:
 ### performance
 | Kernel   | Time(2^20 floats) | Bandwidth(GB/s) | Speedup |
 |----------|-------------------|-----------------|---------|
-| reduce_0 | 8.041ms           | 0.522           | 1.0x
-| reduce_1 | 6.655ms           | 0.630           | 1.21x   |
+| reduce_0 | 1.476ms           | 2.842           | 1.0x    |
+| reduce_1 | 1.382ms           | 3.035           | 1.07x   |
 
 ### problem
 Shared Memory Bank Conflicts
@@ -66,9 +67,9 @@ Sequential addressing:
 ### performance
 | Kernel   | Time(2^20 floats) | Bandwidth(GB/s) | Speedup |
 |----------|-------------------|-----------------|---------|
-| reduce_0 | 8.041ms           | 0.522           | 1.0x    |
-| reduce_1 | 6.655ms           | 0.630           | 1.21x   |
-| reduce_2 | 5.863ms           | 0.715           | 1.37x   |
+| reduce_0 | 1.476ms           | 2.842           | 1.0x    |
+| reduce_1 | 1.382ms           | 3.035           | 1.07x   |
+| reduce_2 | 0.763ms           | 5.496           | 1.93x   |
 
 ### problem
 Idle threads. 1st round: half of the threads do nothing.
@@ -81,10 +82,10 @@ Be careful that in the second call of `reduce_3`, we still stick to the principl
 
 | Kernel   | Time(2^20 floats) | Bandwidth(GB/s) | Speedup |
 |----------|-------------------|-----------------|---------|
-| reduce_0 | 8.041ms           | 0.522           | 1.0x    |
-| reduce_1 | 6.655ms           | 0.630           | 1.21x   |
-| reduce_2 | 5.863ms           | 0.715           | 1.37x   |
-| reduce_3 | 3.430ms           | 1.223           | 2.34x   |
+| reduce_0 | 1.476ms           | 2.842           | 1.0x    |
+| reduce_1 | 1.382ms           | 3.035           | 1.07x   |
+| reduce_2 | 0.763ms           | 5.496           | 1.93x   |
+| reduce_3 | 0.439ms           | 9.560           | 3.36x   |
 
 ### problem
 Instruction overhead: loop overhead
@@ -95,36 +96,38 @@ Unroll the last a few loops when only a warp (32 threads) active.
 
 | Kernel   | Time(2^20 floats) | Bandwidth(GB/s) | Speedup |
 |----------|-------------------|-----------------|---------|
-| reduce_0 | 8.041ms           | 0.522           | 1.0x    |
-| reduce_1 | 6.655ms           | 0.630           | 1.21x   |
-| reduce_2 | 5.863ms           | 0.715           | 1.37x   |
-| reduce_3 | 3.430ms           | 1.223           | 2.34x   |
-| reduce_4 | 2.865ms           | 1.464           | 2.81x   |
+| reduce_0 | 1.476ms           | 2.842           | 1.0x    |
+| reduce_1 | 1.382ms           | 3.035           | 1.07x   |
+| reduce_2 | 0.763ms           | 5.496           | 1.93x   |
+| reduce_3 | 0.439ms           | 9.560           | 3.36x   |
+| reduce_4 | 0.339ms           | 12.370           | 4.35x   |
 
 ## reduce_v5: complete loop unroll
 Notice: in the slides, Mark Harris wrote "the block size is limited by the GPU to 512 threads". But for my GPU, the limitation is 1024 threads(compute capability >= 2.0).
 | Kernel   | Time(2^20 floats) | Bandwidth(GB/s) | Speedup |
 |----------|-------------------|-----------------|---------|
-| reduce_0 | 8.041ms           | 0.522           | 1.0x    |
-| reduce_1 | 6.655ms           | 0.630           | 1.21x   |
-| reduce_2 | 5.863ms           | 0.715           | 1.37x   |
-| reduce_3 | 3.430ms           | 1.223           | 2.34x   |
-| reduce_4 | 2.865ms           | 1.464           | 2.81x   |
-| reduce_5 | 2.397ms           | 1.750           | 3.35x   |
+| reduce_0 | 1.476ms           | 2.842           | 1.0x    |
+| reduce_1 | 1.382ms           | 3.035           | 1.07x   |
+| reduce_2 | 0.763ms           | 5.496           | 1.93x   |
+| reduce_3 | 0.439ms           | 9.560           | 3.36x   |
+| reduce_4 | 0.339ms           | 12.370           | 4.35x   |
+| reduce_5 | 0.311ms           | 13.504           | 4.75x   |
 
 ## reduce_v6: shuffle operation
 The last reduction inside a warp can be done by shuffle operation.
 However, the performance does not vary much.
 | Kernel   | Time(2^20 floats) | Bandwidth(GB/s) | Speedup |
 |----------|-------------------|-----------------|---------|
-| reduce_0 | 8.041ms           | 0.522           | 1.0x    |
-| reduce_1 | 6.655ms           | 0.630           | 1.21x   |
-| reduce_2 | 5.863ms           | 0.715           | 1.37x   |
-| reduce_3 | 3.430ms           | 1.223           | 2.34x   |
-| reduce_4 | 2.865ms           | 1.464           | 2.81x   |
-| reduce_5 | 2.397ms           | 1.750           | 3.35x   |
-| reduce_5 | 2.426ms           | 1.729           | 3.32x   |
+| reduce_0 | 1.476ms           | 2.842           | 1.0x    |
+| reduce_1 | 1.382ms           | 3.035           | 1.07x   |
+| reduce_2 | 0.763ms           | 5.496           | 1.93x   |
+| reduce_3 | 0.439ms           | 9.560           | 3.36x   |
+| reduce_4 | 0.339ms           | 12.370           | 4.35x   |
+| reduce_5 | 0.311ms           | 13.504           | 4.75x   |
+| reduce_6 | 0.302ms           | 13.885           | 4.89x   |
 
 
 # TODO:
-test on NV3070
+1. test on NV3070
+2. number of elements != 2^x; modify the code
+3. modify for flexible  blocksize and gridsize -- apply reduction multiple times?
