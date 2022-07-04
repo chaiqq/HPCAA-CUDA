@@ -12,8 +12,8 @@
 #include <sstream>
 #include <cmath>
 
-#define M 1400
-#define N 1200
+#define M 1024
+#define N 1024
 #define K 1024
 
 
